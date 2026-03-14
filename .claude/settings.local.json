@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd C:\\\\Users\\\\VibeCodeBlogger\\\\PycharmProjects\\\\youtube-studio-auto-language-setter:*)",
+      "Bash(tail:*)",
+      "Bash(cd \"C:\\\\Users\\\\VibeCodeBlogger\\\\PycharmProjects\\\\youtube-studio-auto-language-setter\" && .venv/Scripts/playwright install chromium 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\VibeCodeBlogger\\\\PycharmProjects\\\\youtube-studio-auto-language-setter\" && .venv/Scripts/python debug_dump.py 2>&1)",
+      "Bash(cd:*)",
+      "Bash(curl:*)"
+    ]
+  }
+}

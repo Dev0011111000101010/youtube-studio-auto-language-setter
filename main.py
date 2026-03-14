@@ -15,27 +15,20 @@ BROWSER_PROFILE_DIR = "./browser_profile"
 def log(msg: str):
     """Вывод сообщения с временной меткой."""
     timestamp = time.strftime("%H:%M:%S")
-    print(f"[{timestamp}] {msg}")
+    print(f"[{timestamp}] {msg}", flush=True)
 
 
 def find_private_videos(page) -> list[dict]:
-    """
-    Найти все видео на отфильтрованной странице (только Private).
-    Возвращает список {'title': str, 'video_id': str}.
-    Поддерживает до 10 видео (и более — цикл универсальный).
-    """
+    """Сканирует страницу и возвращает список найденных Private видео."""
     try:
-        page.wait_for_selector("table[aria-label='Video list']", timeout=15000)
+        # Ждем загрузки хотя бы одной ссылки на редактирование видео
+        page.wait_for_selector("a[href*='/edit']", timeout=15000)
     except PlaywrightTimeoutError:
-        log("WARN: таблица видео не найдена — страница ещё грузится")
+        log("ПРЕДУПРЕЖДЕНИЕ: видео не найдены — страница ещё грузится или список пуст")
         return []
 
-    # position()>1 — пропускаем строку-заголовок таблицы
-    edit_links = page.query_selector_all(
-        "xpath=//table[@aria-label='Video list']"
-        "//tr[@role='row'][position()>1]"
-        "//a[contains(@href, '/edit')]"
-    )
+    # Ищем все ссылки редактирования на странице
+    edit_links = page.query_selector_all("a[href*='/edit']")
 
     videos = []
     for link in edit_links:
@@ -51,7 +44,7 @@ def find_private_videos(page) -> list[dict]:
         # Возможно, название — в соседнем элементе внутри той же строки tr.
         title = link.inner_text().strip()
         if not title:
-            log(f"WARN: пустой title для video_id={video_id} — нужно уточнить селектор названия")
+            log(f"ПРЕДУПРЕЖДЕНИЕ: пустой заголовок для video_id={video_id} — нужно уточнить селектор")
             title = video_id  # временный fallback: используем ID как идентификатор
 
         videos.append({"title": title, "video_id": video_id})
@@ -60,15 +53,12 @@ def find_private_videos(page) -> list[dict]:
 
 
 def wait_for_save_confirmation(page) -> bool:
-    """
-    Ждать подтверждения что Save прошёл успешно.
-    TODO: уточнить точный признак по реальной странице YouTube Studio.
-    Логика: читаем DOM после Save и ищем подтверждение изменения.
-    """
+    """Ждет подтверждения успешного сохранения изменений на странице."""
     # Вариант 1: появляется toast/snackbar
     try:
+        # notification-action-renderer is used for success toast on Studio
         page.wait_for_selector(
-            "ytcp-notification-action-renderer, [class*='toast'], paper-toast",
+            "ytcp-notification-action-renderer",
             timeout=10000
         )
         return True
@@ -85,36 +75,47 @@ def wait_for_save_confirmation(page) -> bool:
     except PlaywrightTimeoutError:
         pass
 
-    log("WARN: не удалось подтвердить сохранение — нужно уточнить селектор по реальной странице")
+    # Вариант 3: ждем сообщения "Изменения сохранены" или аналога в snackbar
+    try:
+        page.wait_for_selector(
+            "tp-yt-paper-toast[text*='saved']",
+            timeout=5000
+        )
+        return True
+    except PlaywrightTimeoutError:
+        pass
+
+    log("ПРЕДУПРЕЖДЕНИЕ: не удалось подтвердить сохранение — нужно уточнить селектор")
     return False
 
 
 def set_language_russian(page, video_title: str, video_id: str) -> bool:
-    """
-    Открыть страницу редактирования видео, выставить язык Russian, сохранить.
-    Возвращает True если язык успешно сохранён.
-    """
+    """Открывает редактор видео, ставит русский язык и сохраняет."""
     edit_url = f"https://studio.youtube.com/video/{video_id}/edit"
 
     try:
         page.goto(edit_url)
         page.wait_for_load_state("networkidle", timeout=15000)
 
-        # TODO: уточнить селектор поля Language по реальной странице редактирования
-        language_dropdown = page.locator(
-            "ytcp-form-select[name='language'], "
-            "[placeholder*='Language'], "
-            "ytcp-dropdown-trigger:has-text('Language')"
-        ).first
-        language_dropdown.click()
+        # Нажимаем кнопку "SHOW MORE" / "РАЗВЕРНУТЬ" если она есть
+        try:
+            show_more = page.locator("ytcp-button#toggle-button")
+            if show_more.count() > 0:
+                show_more.first.click(timeout=3000)
+                page.wait_for_timeout(1000)
+        except Exception as e:
+            log(f"Кнопка 'SHOW MORE' не найдена или не кликабельна: {e}")
 
-        # TODO: уточнить как выглядит опция Russian в выпадающем списке
-        russian_option = page.locator(
-            "tp-yt-paper-item:has-text('Russian'), "
-            "[data-value='ru'], "
-            "ytcp-menu-item:has-text('Russian')"
-        ).first
+        # Ищем выпадающий список "Video language"
+        language_dropdown = page.locator("ytcp-form-select.ytcp-form-language-input").first
+        language_dropdown.click()
+        page.wait_for_timeout(500)
+
+        # Выбираем опцию "Russian" в списке (игнорируя 'Russian (Latin)')
+        # tp-yt-paper-item содержит yt-formatted-string с текстом Russian
+        russian_option = page.locator("tp-yt-paper-item:has(yt-formatted-string:text-is('Russian'))").first
         russian_option.click()
+        page.wait_for_timeout(500)
 
         save_btn = page.locator("#save-button, button:has-text('Save')").first
         save_btn.click()
@@ -127,30 +128,67 @@ def set_language_russian(page, video_title: str, video_id: str) -> bool:
         return success
 
     except PlaywrightTimeoutError as e:
-        log(f"TIMEOUT при обработке '{video_title}': {e}")
+        log(f"ТАЙМАУТ при обработке '{video_title}': {e}")
         page.goto(STUDIO_FILTERED_URL)
         return False
     except Exception as e:
-        log(f"ERROR при обработке '{video_title}': {e}")
+        log(f"ОШИБКА при обработке '{video_title}': {e}")
         page.goto(STUDIO_FILTERED_URL)
         return False
 
 
 def main():
-    """Основной демон: мониторит Private видео каждые 5 минут и выставляет язык Russian."""
+    """Основной цикл: мониторит видео и меняет язык каждые 5 минут."""
     processed_titles: set[str] = set()
 
     log("Запуск YouTube Studio Auto Language Setter")
     log(f"Интервал проверки: {CHECK_INTERVAL // 60} минут")
 
     with sync_playwright() as p:
-        log("Запускаю браузер (persistent profile)...")
-        context = p.chromium.launch_persistent_context(
-            user_data_dir=BROWSER_PROFILE_DIR,
-            headless=False,
-            channel="chrome",
-        )
-        page = context.new_page()
+        log("Запускаю браузер (через subprocess, чтобы обойти блокировку Google)...")
+        import subprocess
+        import os
+        import urllib.request
+        
+        profile_path = os.path.abspath(BROWSER_PROFILE_DIR)
+        chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+        
+        if not os.path.exists(chrome_path):
+            log(f"ОШИБКА: Chrome не найден по пути {chrome_path}")
+            return
+            
+        cmd = [
+            chrome_path,
+            f"--remote-debugging-port=9222",
+            f"--user-data-dir={profile_path}",
+            "--no-first-run",
+            "--no-default-browser-check"
+        ]
+        
+        process = subprocess.Popen(cmd)
+        
+        log("Ждем запуска Chrome и открытия порта 9222...")
+        connected = False
+        for _ in range(15):
+            try:
+                urllib.request.urlopen("http://127.0.0.1:9222/json/version", timeout=1)
+                connected = True
+                break
+            except Exception:
+                time.sleep(1)
+                
+        if not connected:
+            log("ОШИБКА: не удалось дождаться порта 9222 от Chrome.")
+            return
+            
+        log("Подключаюсь к браузеру через CDP...")
+        browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+        context = browser.contexts[0]
+        
+        if context.pages:
+            page = context.pages[0]
+        else:
+            page = context.new_page()
 
         log("Открываю YouTube Studio (только Private видео)...")
         page.goto(STUDIO_FILTERED_URL)
@@ -174,9 +212,9 @@ def main():
 
                     if success:
                         processed_titles.add(title)
-                        log(f"OK: '{title}' → язык Russian установлен")
+                        log(f"УСПЕХ: '{title}' → язык Russian установлен")
                     else:
-                        log(f"FAIL: '{title}' — попробую в следующем цикле")
+                        log(f"ОШИБКА: '{title}' — попробую в следующем цикле")
 
                 log(f"Обработано в этой сессии: {len(processed_titles)}")
                 log(f"Следующая проверка через {CHECK_INTERVAL // 60} мин. Ctrl+C для остановки.")

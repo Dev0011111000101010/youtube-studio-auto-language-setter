@@ -3,6 +3,9 @@ debug_dump.html
 debug_links.txt
 debug_edit_page.html
 
+# Dumps folder
+dumps/
+
 # Browser session
 browser_profile/
 

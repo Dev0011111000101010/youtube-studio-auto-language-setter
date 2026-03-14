@@ -86,12 +86,15 @@ from модуль import функция
 youtube-studio-auto-language-setter/
 │
 ├── main.py                 Основной демон — точка входа
+├── debug_dump.py           Утилита: дампит 3 страницы в dumps/ для анализа DOM
 ├── requirements.txt        Зависимости (playwright)
+├── run.log                 Лог текущего запуска (перезаписывается при старте)
 ├── README.md               Логика проекта и контекст для нового агента
 ├── CLAUDE_INSTRUCTIONS.md  Контракт: правила взаимодействия с AI
 ├── PROJECT_DESIGN.md       Карта проекта (этот файл)
 │
-├── browser_profile/        Сохранённый профиль Playwright (сессия Google) — в .gitignore
+├── dumps/                  HTML дампы страниц (video_list, edit_page, translations_page)
+├── browser_profile/        Сохранённый профиль Chrome (сессия Google) — в .gitignore
 └── .venv/                  Python virtual environment
 ```
 
@@ -100,30 +103,54 @@ youtube-studio-auto-language-setter/
 ## КЛЮЧЕВЫЕ КОМПОНЕНТЫ
 
 ### main.py
-**Назначение:** Бесконечный loop: каждые 5 минут проверяет YouTube Studio на наличие новых Private видео, выставляет им язык Russian и подтверждает сохранение.
+**Назначение:** Бесконечный loop: каждые 5 минут проверяет YouTube Studio на наличие новых Private видео, проверяет язык на странице /translations, пропускает если Russian уже стоит, иначе устанавливает (TODO).
 
 **Импорты:**
 ```python
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-import time
+import time, re, sys, subprocess, os, urllib.request
 ```
 
 **Константы:**
-- `STUDIO_FILTERED_URL` — URL страницы видео канала (с фильтром Private)
+- `STUDIO_FILTERED_URL` — URL списка видео канала (фильтр Private + сортировка по дате)
 - `CHECK_INTERVAL = 300` — интервал проверки в секундах
-- `BROWSER_PROFILE_DIR = "./browser_profile"` — папка сохранённой сессии Playwright Chromium
+- `BROWSER_PROFILE_DIR = "./browser_profile"` — профиль Chrome с сохранённой сессией
+- `LOG_FILE = "run.log"` — лог текущего запуска (перезаписывается)
 
 **Функции (def):**
-- `log(msg: str)` — вывод в консоль с временной меткой
-- `find_private_videos(page) -> list[str]` — сканирует страницу, возвращает названия Private видео
-- `wait_for_save_confirmation(page) -> bool` — ждёт подтверждения сохранения (TODO: уточнить по реальной странице)
-- `set_language_russian(page, video_title: str) -> bool` — открывает Details, выставляет Russian, сохраняет
-- `main()` — точка входа: запускает Playwright Chromium с persistent profile, держит in-memory set `processed_titles`, управляет loop
+- `log(msg: str)` — вывод в консоль + запись в run.log с временной меткой
+- `find_private_videos(page) -> list[dict]` — ищет ссылки `a[href*='/video/'][href*='/edit']`, дедуплицирует по video_id (берёт запись с самым длинным title), возвращает `[{title, video_id}]`
+- `wait_for_save_confirmation(page) -> bool` — ждёт toast/disabled Save кнопки (TODO: не используется пока)
+- `set_language_russian(page, video_title: str, video_id: str) -> bool` — goto /edit → goto /translations → проверяет `h2#default-language-title`, если Russian — пропускает; иначе TODO
+- `main()` — запускает Chrome через subprocess + CDP, логирует все вкладки, держит `processed_titles: set[str]` (video_id), управляет loop
 
 **In-memory state:**
-- `processed_titles: set[str]` — названия обработанных видео в текущей сессии. При перезапуске — чистый старт.
+- `processed_titles: set[str]` — video_id обработанных видео в текущей сессии. При перезапуске — чистый старт.
 
-**Детали:** см. main.py (TODO-комментарии в местах, где селекторы требуют уточнения по реальной странице)
+**Детали:** см. main.py
+
+---
+
+### debug_dump.py
+**Назначение:** Утилита для разового дампа DOM трёх страниц YouTube Studio в папку dumps/ — для анализа селекторов.
+
+**Импорты:**
+```python
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+import subprocess, os, time, urllib.request
+```
+
+**Константы:**
+- `DUMPS_DIR = "./dumps"` — папка для HTML дампов
+- `OUTPUT_VIDEO_LIST`, `OUTPUT_LINKS`, `OUTPUT_EDIT`, `OUTPUT_TRANSLATIONS` — пути файлов
+
+**Функции (def):**
+- `log(msg: str)` — вывод с временной меткой
+- `save_html(page, path: str)` — сохраняет page.content() в файл (перезапись)
+- `connect_to_chrome(p) -> page` — запускает Chrome если не запущен (порт 9222), подключается по CDP
+- `main()` — дампит: список видео → video_list.html + links.txt, /edit первого → edit_page.html, /translations первого → translations_page.html
+
+**Детали:** см. debug_dump.py
 
 ---
 

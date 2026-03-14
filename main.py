@@ -2,6 +2,7 @@
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 import time
 import re
+import sys
 
 STUDIO_FILTERED_URL = (
     "https://studio.youtube.com/channel/UC9JODm8Vze3gdkL9x27eFwA/videos/upload"
@@ -10,27 +11,34 @@ STUDIO_FILTERED_URL = (
 )
 CHECK_INTERVAL = 300  # секунд между проверками (5 минут)
 BROWSER_PROFILE_DIR = "./browser_profile"
+LOG_FILE = "run.log"
+
+_log_file = open(LOG_FILE, "w", encoding="utf-8", buffering=1)
 
 
 def log(msg: str):
-    """Вывод сообщения с временной меткой."""
-    timestamp = time.strftime("%H:%M:%S")
-    print(f"[{timestamp}] {msg}", flush=True)
+    """Вывод сообщения с временной меткой в консоль и файл run.log."""
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{timestamp}] {msg}"
+    print(line, flush=True)
+    _log_file.write(line + "\n")
 
 
 def find_private_videos(page) -> list[dict]:
     """Сканирует страницу и возвращает список найденных Private видео."""
     try:
         # Ждем загрузки хотя бы одной ссылки на редактирование видео
-        page.wait_for_selector("a[href*='/edit']", timeout=15000)
+        page.wait_for_selector("a[href*='/video/'][href*='/edit']", timeout=15000)
     except PlaywrightTimeoutError:
         log("ПРЕДУПРЕЖДЕНИЕ: видео не найдены — страница ещё грузится или список пуст")
         return []
 
     # Ищем все ссылки редактирования на странице
-    edit_links = page.query_selector_all("a[href*='/edit']")
+    edit_links = page.query_selector_all("a[href*='/video/'][href*='/edit']")
 
-    videos = []
+    # Дедублируем по video_id: один video_id → запись с самым длинным title
+    # (ссылка на превью даёт duration "1:39:30", ссылка на заголовок — реальное название)
+    best: dict[str, dict] = {}
     for link in edit_links:
         href = link.get_attribute("href") or ""
         match = re.search(r"/video/([^/]+)/edit", href)
@@ -38,17 +46,15 @@ def find_private_videos(page) -> list[dict]:
             continue
 
         video_id = match.group(1)
+        title = link.inner_text().strip() or video_id
 
-        # TODO: уточнить где находится текст названия видео в DOM.
-        # inner_text() ссылки /edit может быть пустым (если ссылка оборачивает thumbnail).
-        # Возможно, название — в соседнем элементе внутри той же строки tr.
-        title = link.inner_text().strip()
-        if not title:
-            log(f"ПРЕДУПРЕЖДЕНИЕ: пустой заголовок для video_id={video_id} — нужно уточнить селектор")
-            title = video_id  # временный fallback: используем ID как идентификатор
+        if video_id not in best or len(title) > len(best[video_id]["title"]):
+            best[video_id] = {"title": title, "video_id": video_id}
 
-        videos.append({"title": title, "video_id": video_id})
-
+    videos = list(best.values())
+    log(f"[ФАКТ] Уникальных видео после дедупликации: {len(videos)}")
+    for v in videos:
+        log(f"[ФАКТ]   id={v['video_id']} title='{v['title']}'")
     return videos
 
 
@@ -90,42 +96,41 @@ def wait_for_save_confirmation(page) -> bool:
 
 
 def set_language_russian(page, video_title: str, video_id: str) -> bool:
-    """Открывает редактор видео, ставит русский язык и сохраняет."""
+    """Открывает редактор видео, переходит в Languages, ставит русский язык и сохраняет."""
     edit_url = f"https://studio.youtube.com/video/{video_id}/edit"
 
     try:
+        log(f"[ФАКТ] До перехода, текущий URL: {page.url}")
         page.goto(edit_url)
         page.wait_for_load_state("networkidle", timeout=15000)
+        log(f"[ФАКТ] После goto /edit, URL: {page.url}")
+        page.wait_for_timeout(2000)
 
-        # Нажимаем кнопку "SHOW MORE" / "РАЗВЕРНУТЬ" если она есть
-        try:
-            show_more = page.locator("ytcp-button#toggle-button")
-            if show_more.count() > 0:
-                show_more.first.click(timeout=3000)
-                page.wait_for_timeout(1000)
-        except Exception as e:
-            log(f"Кнопка 'SHOW MORE' не найдена или не кликабельна: {e}")
+        translations_url = f"https://studio.youtube.com/video/{video_id}/translations"
+        log(f"[ФАКТ] Перехожу на /translations: {translations_url}")
+        page.goto(translations_url)
+        page.wait_for_load_state("networkidle", timeout=15000)
+        log(f"[ФАКТ] После goto /translations, URL: {page.url}")
+        page.wait_for_timeout(2000)
 
-        # Ищем выпадающий список "Video language"
-        language_dropdown = page.locator("ytcp-form-select.ytcp-form-language-input").first
-        language_dropdown.click()
-        page.wait_for_timeout(500)
+        # Проверяем — язык уже Russian?
+        language_header = page.locator("h2#default-language-title")
+        log(f"[ФАКТ] h2#default-language-title найдено: {language_header.count()}")
+        if language_header.count() > 0:
+            header_text = language_header.text_content() or ""
+            log(f"[ФАКТ] Текст заголовка языка: '{header_text.strip()}'")
+            if "Russian" in header_text:
+                log(f"Язык уже Russian для '{video_title}' — пропускаю")
+                page.goto(STUDIO_FILTERED_URL)
+                page.wait_for_load_state("networkidle", timeout=15000)
+                log(f"[ФАКТ] Вернулись на список, URL: {page.url}")
+                return True
 
-        # Выбираем опцию "Russian" в списке (игнорируя 'Russian (Latin)')
-        # tp-yt-paper-item содержит yt-formatted-string с текстом Russian
-        russian_option = page.locator("tp-yt-paper-item:has(yt-formatted-string:text-is('Russian'))").first
-        russian_option.click()
-        page.wait_for_timeout(500)
-
-        save_btn = page.locator("#save-button, button:has-text('Save')").first
-        save_btn.click()
-
-        success = wait_for_save_confirmation(page)
-
+        log(f"Язык не выставлен — нужно установить Russian для '{video_title}' (TODO)")
         page.goto(STUDIO_FILTERED_URL)
-        page.wait_for_selector("table[aria-label='Video list']", timeout=15000)
-
-        return success
+        page.wait_for_load_state("networkidle", timeout=15000)
+        log(f"[ФАКТ] Вернулись на список, URL: {page.url}")
+        return False
 
     except PlaywrightTimeoutError as e:
         log(f"ТАЙМАУТ при обработке '{video_title}': {e}")
@@ -184,14 +189,23 @@ def main():
         log("Подключаюсь к браузеру через CDP...")
         browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
         context = browser.contexts[0]
-        
-        if context.pages:
-            page = context.pages[0]
+
+        all_pages = context.pages
+        log(f"[ФАКТ] Открытых вкладок в браузере: {len(all_pages)}")
+        for i, p_ in enumerate(all_pages):
+            log(f"[ФАКТ]   вкладка[{i}]: {p_.url}")
+
+        if all_pages:
+            page = all_pages[0]
         else:
             page = context.new_page()
 
-        log("Открываю YouTube Studio (только Private видео)...")
+        log(f"[ФАКТ] Работаем с вкладкой: {page.url}")
+        log("Перехожу на YouTube Studio (только Private видео)...")
         page.goto(STUDIO_FILTERED_URL)
+        page.wait_for_load_state("networkidle", timeout=20000)
+        log(f"[ФАКТ] URL после перехода на Studio: {page.url}")
+        page.wait_for_timeout(2000)
 
         try:
             while True:
@@ -200,7 +214,7 @@ def main():
                 private_videos = find_private_videos(page)
                 log(f"Найдено Private видео: {len(private_videos)}")
 
-                new_videos = [v for v in private_videos if v["title"] not in processed_titles]
+                new_videos = [v for v in private_videos if v["video_id"] not in processed_titles]
                 log(f"Новых (не обработанных): {len(new_videos)}")
 
                 for video in new_videos:
@@ -211,10 +225,10 @@ def main():
                     success = set_language_russian(page, title, video_id)
 
                     if success:
-                        processed_titles.add(title)
-                        log(f"УСПЕХ: '{title}' → язык Russian установлен")
+                        processed_titles.add(video_id)
+                        log(f"УСПЕХ: '{title}' (id={video_id}) → язык Russian установлен")
                     else:
-                        log(f"ОШИБКА: '{title}' — попробую в следующем цикле")
+                        log(f"ОШИБКА: '{title}' (id={video_id}) — попробую в следующем цикле")
 
                 log(f"Обработано в этой сессии: {len(processed_titles)}")
                 log(f"Следующая проверка через {CHECK_INTERVAL // 60} мин. Ctrl+C для остановки.")
@@ -228,6 +242,7 @@ def main():
             log("Остановлено пользователем (Ctrl+C)")
         finally:
             context.close()
+            _log_file.close()
 
 
 if __name__ == "__main__":

@@ -3,7 +3,10 @@ import sys
 sys.stdout.reconfigure(encoding="utf-8")
 
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+import subprocess
+import os
 import time
+import urllib.request
 
 STUDIO_FILTERED_URL = (
     "https://studio.youtube.com/channel/UC9JODm8Vze3gdkL9x27eFwA/videos/upload"
@@ -11,103 +14,116 @@ STUDIO_FILTERED_URL = (
     "&sort=%7B%22columnType%22%3A%22date%22%2C%22sortOrder%22%3A%22DESCENDING%22%7D"
 )
 BROWSER_PROFILE_DIR = "./browser_profile"
-OUTPUT_HTML = "debug_dump.html"
-OUTPUT_LINKS = "debug_links.txt"
-OUTPUT_EDIT_HTML = "debug_edit_page.html"
-DEBUG_MIN_PAUSE = 2.0  # минимальная пауза между шагами (секунды)
+DUMPS_DIR = "./dumps"
+OUTPUT_VIDEO_LIST   = f"{DUMPS_DIR}/video_list.html"
+OUTPUT_LINKS        = f"{DUMPS_DIR}/video_list_links.txt"
+OUTPUT_EDIT         = f"{DUMPS_DIR}/edit_page.html"
+OUTPUT_TRANSLATIONS = f"{DUMPS_DIR}/translations_page.html"
+DEBUG_PAUSE = 2.0
 
 
 def log(msg: str):
     """Вывод сообщения с временной меткой."""
-    timestamp = time.strftime("%H:%M:%S")
-    print(f"[{timestamp}] {msg}")
+    print(f"[{time.strftime('%H:%M:%S')}] {msg}")
 
 
-def debug_wait(page, selector: str, timeout: int = 30000):
-    """Ждать появления селектора, но не менее DEBUG_MIN_PAUSE секунд."""
-    start = time.time()
-    page.wait_for_selector(selector, timeout=timeout)
-    elapsed = time.time() - start
-    remaining = DEBUG_MIN_PAUSE - elapsed
-    if remaining > 0:
-        time.sleep(remaining)
+def save_html(page, path: str):
+    """Сохранить page.content() в файл (перезапись)."""
+    html = page.content()
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(html)
+    log(f"Дамп сохранён → {path} ({len(html)} байт)")
+    return html
+
+
+def connect_to_chrome(p):
+    """Запустить Chrome если не запущен, вернуть (browser, page)."""
+    chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+    profile_path = os.path.abspath(BROWSER_PROFILE_DIR)
+
+    try:
+        urllib.request.urlopen("http://127.0.0.1:9222/json/version", timeout=1)
+        log("Chrome уже запущен на порту 9222")
+    except Exception:
+        log("Запускаю Chrome...")
+        subprocess.Popen([
+            chrome_path,
+            "--remote-debugging-port=9222",
+            f"--user-data-dir={profile_path}",
+            "--no-first-run",
+            "--no-default-browser-check",
+        ])
+        for _ in range(15):
+            try:
+                urllib.request.urlopen("http://127.0.0.1:9222/json/version", timeout=1)
+                break
+            except Exception:
+                time.sleep(1)
+
+    browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+    context = browser.contexts[0]
+    page = context.pages[0] if context.pages else context.new_page()
+    return page
 
 
 def main():
-    """Открыть страницу, дождаться таблицы, сохранить HTML и данные ссылок + страницу редактирования."""
+    """Дампит три страницы: список видео, /edit первого, /translations первого."""
+    os.makedirs(DUMPS_DIR, exist_ok=True)
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(
-            user_data_dir=BROWSER_PROFILE_DIR,
-            headless=False,
-            slow_mo=2000,
-            channel="chrome",
-            args=["--disable-blink-features=AutomationControlled"],
-        )
-        page = context.new_page()
+        page = connect_to_chrome(p)
 
-        log("Открываю страницу списка видео (только Private)...")
+        # 1. Список видео
+        log("Открываю список Private видео...")
         page.goto(STUDIO_FILTERED_URL)
-
-        log("Жду таблицу... (если нужен логин — залогинься в браузере)")
         try:
-            debug_wait(page, "table[aria-label='Video list']", timeout=40000)
-            log("Таблица найдена!")
+            page.wait_for_selector("table[aria-label='Video list']", timeout=5000)
+            log("Таблица найдена")
         except PlaywrightTimeoutError:
-            log("Таблица не появилась за 120 сек — сохраняю что есть")
+            log("Таблица не появилась — сохраняю что есть")
+        time.sleep(DEBUG_PAUSE)
+        save_html(page, OUTPUT_VIDEO_LIST)
 
-        log("Сохраняю HTML страницы списка...")
-        html = page.content()
-        with open(OUTPUT_HTML, "w", encoding="utf-8") as f:
-            f.write(html)
-        log(f"HTML сохранён → {OUTPUT_HTML} ({len(html)} байт)")
-
-        log("Извлекаю данные по ссылкам /edit...")
+        # Извлекаем ссылки /edit
         results = page.evaluate("""() => {
-            const links = document.querySelectorAll("a[href*='/edit']");
+            const links = document.querySelectorAll("a[href*='/video/'][href*='/edit']");
             return Array.from(links).map(a => {
                 const row = a.closest('tr');
                 return {
                     href: a.href,
                     linkText: a.innerText.trim(),
-                    linkHTML: a.innerHTML.trim().substring(0, 200),
                     rowText: row ? row.innerText.trim().substring(0, 300) : 'NO ROW'
                 };
             });
         }""")
-
         with open(OUTPUT_LINKS, "w", encoding="utf-8") as f:
-            f.write(f"Найдено ссылок /edit: {len(results)}\n")
-            f.write("=" * 60 + "\n\n")
+            f.write(f"Найдено ссылок /edit: {len(results)}\n{'=' * 60}\n\n")
             for i, item in enumerate(results, 1):
                 f.write(f"[{i}] href:     {item['href']}\n")
                 f.write(f"    linkText: '{item['linkText']}'\n")
-                f.write(f"    linkHTML: {item['linkHTML']}\n")
-                f.write(f"    rowText:  {item['rowText']}\n")
-                f.write("\n")
+                f.write(f"    rowText:  {item['rowText']}\n\n")
+        log(f"Ссылки сохранены → {OUTPUT_LINKS} ({len(results)} шт.)")
 
-        log(f"Данные ссылок сохранены → {OUTPUT_LINKS} ({len(results)} ссылок)")
+        if not results:
+            log("Нет видео — дампы /edit и /translations пропускаю")
+            return
 
-        if results:
-            first_edit_url = results[0]["href"]
-            log(f"Открываю страницу редактирования: {first_edit_url}")
-            page.goto(first_edit_url)
-            try:
-                page.wait_for_load_state("networkidle", timeout=30000)
-                time.sleep(DEBUG_MIN_PAUSE)
-                log("Страница редактирования загружена")
-            except PlaywrightTimeoutError:
-                log("networkidle timeout — сохраняю что есть")
+        # 2. Страница /edit первого видео
+        edit_url = results[0]["href"]
+        log(f"Открываю /edit: {edit_url}")
+        page.goto(edit_url)
+        page.wait_for_load_state("networkidle", timeout=30000)
+        time.sleep(DEBUG_PAUSE)
+        save_html(page, OUTPUT_EDIT)
 
-            log("Сохраняю HTML страницы редактирования...")
-            edit_html = page.content()
-            with open(OUTPUT_EDIT_HTML, "w", encoding="utf-8") as f:
-                f.write(edit_html)
-            log(f"HTML сохранён → {OUTPUT_EDIT_HTML} ({len(edit_html)} байт)")
-        else:
-            log("Нет ссылок /edit — пропускаю дамп страницы редактирования")
+        # 3. Страница /translations первого видео
+        translations_url = edit_url.replace("/edit", "/translations")
+        log(f"Открываю /translations: {translations_url}")
+        page.goto(translations_url)
+        page.wait_for_load_state("networkidle", timeout=30000)
+        time.sleep(DEBUG_PAUSE)
+        save_html(page, OUTPUT_TRANSLATIONS)
 
-        log("Готово. Закрываю браузер.")
-        context.close()
+        log("Готово.")
 
 
 if __name__ == "__main__":

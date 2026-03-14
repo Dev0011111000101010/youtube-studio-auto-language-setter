@@ -10,8 +10,13 @@ Playwright-демон, который мониторит YouTube Studio кана
 
 ### Запуск
 ```
-.venv/Scripts/python main.py
+PYTHONIOENCODING=utf-8 .venv/Scripts/python main.py
 ```
+
+> На Windows (cmd/PowerShell) используй:
+> ```
+> set PYTHONIOENCODING=utf-8 && .venv\Scripts\python main.py
+> ```
 
 ### Алгоритм (loop каждые 5 минут)
 

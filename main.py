@@ -134,25 +134,72 @@ def set_language_russian(page, video_title: str, video_id: str) -> bool:
         log(f"Перехожу на /translations для '{video_title}'")
         page.goto(translations_url)
 
-        # Ждём реальный элемент из DOM — без него страница не считается загруженной
+        # Ждём один из двух: дропдаун (язык не выбран) или заголовок (язык уже Russian)
         try:
-            page.wait_for_selector("h2#default-language-title", timeout=5000)
+            page.wait_for_selector(
+                "span.dropdown-trigger-text, h2#default-language-title",
+                timeout=5000
+            )
         except PlaywrightTimeoutError:
-            log(f"ОШИБКА: h2#default-language-title не появился за 5 сек на {page.url} — страница не загрузилась")
-            return False
+            log(f"ФАТАЛЬНО: страница /translations не загрузилась за 5 сек — закрываю браузер ({page.url})")
+            sys.exit(1)
 
-        # Читаем реальный текст из DOM
-        header_text = page.locator("h2#default-language-title").text_content() or ""
-        log(f"[DOM] Заголовок языка: '{header_text.strip()}' (страница: {page.url})")
+        # Определяем состояние страницы
+        if page.locator("h2#default-language-title").count() > 0:
+            lang_text = page.locator("h2#default-language-title").text_content() or ""
+            log(f"[DOM] Язык уже установлен: '{lang_text.strip()}' — иду к субтитрам")
+        else:
+            trigger_text = page.locator("span.dropdown-trigger-text").first.text_content() or ""
+            log(f"[DOM] Текущий язык в дропдауне: '{trigger_text.strip()}'")
 
-        if not header_text.strip():
-            log(f"ОШИБКА: заголовок языка пустой — не можем определить язык для '{video_title}'")
-            return False
+            if "Set language" in trigger_text:
+                log(f"Язык не Russian для '{video_title}' — открываю дропдаун и выбираю Russian")
 
-        if "Russian" not in header_text:
-            log(f"Язык не Russian для '{video_title}' — нужно установить (TODO)")
-            page.goto(STUDIO_FILTERED_URL)
-            return False
+                page.locator("span.dropdown-trigger-text").first.click()
+                log(f"[DOM] Кликнул дропдаун языка")
+
+                try:
+                    page.wait_for_selector(
+                        "tp-yt-paper-item:has(yt-formatted-string.item-text.main-text:text-is('Russian'))",
+                        timeout=5000
+                    )
+                except PlaywrightTimeoutError:
+                    log(f"ОШИБКА: опция Russian не появилась за 5 сек")
+                    return False
+
+                page.locator(
+                    "tp-yt-paper-item:has(yt-formatted-string.item-text.main-text:text-is('Russian'))"
+                ).click()
+                log(f"[DOM] Кликнул Russian в дропдауне")
+
+                try:
+                    page.wait_for_selector("ytcp-button#confirm-button:not([disabled])", timeout=5000)
+                    log(f"[DOM] Кнопка Confirm активна — кликаю")
+                    page.locator("ytcp-button#confirm-button").click()
+                    log(f"[DOM] Кликнул Confirm")
+                except PlaywrightTimeoutError:
+                    log(f"ОШИБКА: кнопка Confirm не стала активной за 5 сек")
+                    return False
+
+                # Ждём результат: h2#default-language-title (успех) или span.dropdown-trigger-text (провал)
+                try:
+                    page.wait_for_selector(
+                        "h2#default-language-title, span.dropdown-trigger-text",
+                        timeout=15000
+                    )
+                except PlaywrightTimeoutError:
+                    log(f"ОШИБКА: ни один элемент не появился за 15 сек после Confirm")
+                    return False
+
+                page.wait_for_timeout(10000)
+
+                if page.locator("h2#default-language-title").count() > 0:
+                    lang_saved = page.locator("h2#default-language-title").text_content() or ""
+                    log(f"[DOM] Язык Russian сохранён: '{lang_saved.strip()}'")
+                else:
+                    trigger_verify = page.locator("span.dropdown-trigger-text").first.text_content() or ""
+                    log(f"ОШИБКА: язык не сохранился — дропдаун: '{trigger_verify.strip()}'")
+                    return False
 
         log(f"Язык Russian для '{video_title}' — начинаю скачивание субтитров")
 
@@ -238,41 +285,51 @@ def main():
     log(f"Интервал проверки: {CHECK_INTERVAL // 60} минут")
 
     with sync_playwright() as p:
-        log("Запускаю браузер (через subprocess, чтобы обойти блокировку Google)...")
         import subprocess
         import urllib.request
-        
+        import socket
+
         profile_path = os.path.abspath(BROWSER_PROFILE_DIR)
         chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-        
-        if not os.path.exists(chrome_path):
-            log(f"ОШИБКА: Chrome не найден по пути {chrome_path}")
-            return
-            
-        cmd = [
-            chrome_path,
-            f"--remote-debugging-port=9222",
-            f"--user-data-dir={profile_path}",
-            f"--download-default-directory={DOWNLOADS_DIR}",
-            "--no-first-run",
-            "--no-default-browser-check"
-        ]
-        
-        process = subprocess.Popen(cmd)
-        
-        log("Ждем запуска Chrome и открытия порта 9222...")
-        connected = False
-        for _ in range(15):
+
+        # Проверяем — не запущен ли Chrome уже на порту 9222
+        def port_open() -> bool:
             try:
                 urllib.request.urlopen("http://127.0.0.1:9222/json/version", timeout=1)
-                connected = True
-                break
+                return True
             except Exception:
+                return False
+
+        process = None
+        if port_open():
+            log("Chrome уже запущен на порту 9222 — подключаюсь к существующему")
+        else:
+            if not os.path.exists(chrome_path):
+                log(f"ОШИБКА: Chrome не найден по пути {chrome_path}")
+                return
+
+            log("Запускаю браузер (через subprocess, чтобы обойти блокировку Google)...")
+            cmd = [
+                chrome_path,
+                f"--remote-debugging-port=9222",
+                f"--user-data-dir={profile_path}",
+                f"--download-default-directory={DOWNLOADS_DIR}",
+                "--no-first-run",
+                "--no-default-browser-check"
+            ]
+            process = subprocess.Popen(cmd)
+
+            log("Ждем запуска Chrome и открытия порта 9222...")
+            connected = False
+            for _ in range(15):
+                if port_open():
+                    connected = True
+                    break
                 time.sleep(1)
-                
-        if not connected:
-            log("ОШИБКА: не удалось дождаться порта 9222 от Chrome.")
-            return
+
+            if not connected:
+                log("ОШИБКА: не удалось дождаться порта 9222 от Chrome.")
+                return
             
         log("Подключаюсь к браузеру через CDP...")
         browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
@@ -311,7 +368,7 @@ def main():
             log(f"[DOM] Studio загружена. Ссылок на видео в DOM: {actual} (URL: {page.url})")
         except PlaywrightTimeoutError:
             log(f"ОШИБКА: ссылки на видео не появились за 10 сек — список пуст или страница не загрузилась (URL: {page.url})")
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(3000)
 
         try:
             while True:
@@ -341,8 +398,27 @@ def main():
 
                 time.sleep(CHECK_INTERVAL)
 
+                # Восстанавливаем страницу если была закрыта
+                if page.is_closed():
+                    log("[ФАКТ] Рабочая вкладка закрыта — беру следующую http-вкладку или создаю новую")
+                    page = next(
+                        (p_ for p_ in context.pages if p_.url.startswith("http") and not p_.is_closed()),
+                        None
+                    )
+                    if page is None:
+                        page = context.new_page()
+                    cdp_session = context.new_cdp_session(page)
+                    cdp_session.send("Page.setDownloadBehavior", {
+                        "behavior": "allow",
+                        "downloadPath": DOWNLOADS_DIR
+                    })
+                    log(f"[ФАКТ] Новая рабочая вкладка: {page.url}")
+
                 page.goto(STUDIO_FILTERED_URL)
-                page.wait_for_selector("table[aria-label='Video list']", timeout=15000)
+                try:
+                    page.wait_for_selector("table[aria-label='Video list']", timeout=45000)
+                except Exception:
+                    log("ПРЕДУПРЕЖДЕНИЕ: таблица видео не появилась — пропускаю итерацию")
 
         except KeyboardInterrupt:
             log("Остановлено пользователем (Ctrl+C)")

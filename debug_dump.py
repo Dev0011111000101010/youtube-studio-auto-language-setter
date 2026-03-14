@@ -62,7 +62,12 @@ def connect_to_chrome(p):
 
     browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
     context = browser.contexts[0]
-    page = context.pages[0] if context.pages else context.new_page()
+    page = next(
+        (p_ for p_ in context.pages if p_.url.startswith("http")),
+        None
+    )
+    if page is None:
+        page = context.new_page()
     return page
 
 

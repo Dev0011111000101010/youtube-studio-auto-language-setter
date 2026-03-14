@@ -96,49 +96,51 @@ def wait_for_save_confirmation(page) -> bool:
 
 
 def set_language_russian(page, video_title: str, video_id: str) -> bool:
-    """Открывает редактор видео, переходит в Languages, ставит русский язык и сохраняет."""
-    edit_url = f"https://studio.youtube.com/video/{video_id}/edit"
+    """Открывает /translations, читает заголовок языка из DOM, пропускает если Russian."""
+    translations_url = f"https://studio.youtube.com/video/{video_id}/translations"
 
     try:
-        log(f"[ФАКТ] До перехода, текущий URL: {page.url}")
-        page.goto(edit_url)
-        page.wait_for_load_state("networkidle", timeout=15000)
-        log(f"[ФАКТ] После goto /edit, URL: {page.url}")
-        page.wait_for_timeout(2000)
-
-        translations_url = f"https://studio.youtube.com/video/{video_id}/translations"
-        log(f"[ФАКТ] Перехожу на /translations: {translations_url}")
+        log(f"Перехожу на /translations для '{video_title}'")
         page.goto(translations_url)
-        page.wait_for_load_state("networkidle", timeout=15000)
-        log(f"[ФАКТ] После goto /translations, URL: {page.url}")
-        page.wait_for_timeout(2000)
 
-        # Проверяем — язык уже Russian?
-        language_header = page.locator("h2#default-language-title")
-        log(f"[ФАКТ] h2#default-language-title найдено: {language_header.count()}")
-        if language_header.count() > 0:
-            header_text = language_header.text_content() or ""
-            log(f"[ФАКТ] Текст заголовка языка: '{header_text.strip()}'")
-            if "Russian" in header_text:
-                log(f"Язык уже Russian для '{video_title}' — пропускаю")
-                page.goto(STUDIO_FILTERED_URL)
-                page.wait_for_load_state("networkidle", timeout=15000)
-                log(f"[ФАКТ] Вернулись на список, URL: {page.url}")
-                return True
+        # Ждём реальный элемент из DOM — без него страница не считается загруженной
+        try:
+            page.wait_for_selector("h2#default-language-title", timeout=5000)
+        except PlaywrightTimeoutError:
+            log(f"ОШИБКА: h2#default-language-title не появился за 5 сек на {page.url} — страница не загрузилась")
+            return False
 
-        log(f"Язык не выставлен — нужно установить Russian для '{video_title}' (TODO)")
+        # Читаем реальный текст из DOM
+        header_text = page.locator("h2#default-language-title").text_content() or ""
+        log(f"[DOM] Заголовок языка: '{header_text.strip()}' (страница: {page.url})")
+
+        if not header_text.strip():
+            log(f"ОШИБКА: заголовок языка пустой — не можем определить язык для '{video_title}'")
+            return False
+
+        if "Russian" in header_text:
+            log(f"Язык уже Russian для '{video_title}' — пропускаю")
+        else:
+            log(f"Язык не Russian для '{video_title}' — нужно установить (TODO)")
+
+        # Возвращаемся на список и ждём реальный элемент
         page.goto(STUDIO_FILTERED_URL)
-        page.wait_for_load_state("networkidle", timeout=15000)
-        log(f"[ФАКТ] Вернулись на список, URL: {page.url}")
-        return False
+        try:
+            page.wait_for_selector("a[href*='/video/'][href*='/edit']", timeout=5000)
+        except PlaywrightTimeoutError:
+            log(f"ОШИБКА: список видео не загрузился за 5 сек после возврата (URL: {page.url})")
+            return False
+
+        actual_count = len(page.query_selector_all("a[href*='/video/'][href*='/edit']"))
+        log(f"[DOM] Вернулись на список. Ссылок на видео найдено: {actual_count} (URL: {page.url})")
+
+        return "Russian" in header_text
 
     except PlaywrightTimeoutError as e:
         log(f"ТАЙМАУТ при обработке '{video_title}': {e}")
-        page.goto(STUDIO_FILTERED_URL)
         return False
     except Exception as e:
         log(f"ОШИБКА при обработке '{video_title}': {e}")
-        page.goto(STUDIO_FILTERED_URL)
         return False
 
 
@@ -195,16 +197,26 @@ def main():
         for i, p_ in enumerate(all_pages):
             log(f"[ФАКТ]   вкладка[{i}]: {p_.url}")
 
-        if all_pages:
-            page = all_pages[0]
-        else:
+        # Берём первую нормальную вкладку (http/https), не служебную chrome:// страницу
+        page = next(
+            (p_ for p_ in all_pages if p_.url.startswith("http")),
+            None
+        )
+        if page is None:
+            log("[ФАКТ] Нет http-вкладок — создаю новую")
             page = context.new_page()
 
         log(f"[ФАКТ] Работаем с вкладкой: {page.url}")
         log("Перехожу на YouTube Studio (только Private видео)...")
         page.goto(STUDIO_FILTERED_URL)
-        page.wait_for_load_state("networkidle", timeout=20000)
-        log(f"[ФАКТ] URL после перехода на Studio: {page.url}")
+
+        # Ждём реальный элемент — ссылку на видео в DOM
+        try:
+            page.wait_for_selector("a[href*='/video/'][href*='/edit']", timeout=10000)
+            actual = len(page.query_selector_all("a[href*='/video/'][href*='/edit']"))
+            log(f"[DOM] Studio загружена. Ссылок на видео в DOM: {actual} (URL: {page.url})")
+        except PlaywrightTimeoutError:
+            log(f"ОШИБКА: ссылки на видео не появились за 10 сек — список пуст или страница не загрузилась (URL: {page.url})")
         page.wait_for_timeout(2000)
 
         try:

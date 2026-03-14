@@ -1,29 +1,33 @@
-[2026-03-14 00:56:31] Запуск YouTube Studio Auto Language Setter
-[2026-03-14 00:56:31] Интервал проверки: 5 минут
-[2026-03-14 00:56:31] Запускаю браузер (через subprocess, чтобы обойти блокировку Google)...
-[2026-03-14 00:56:31] Ждем запуска Chrome и открытия порта 9222...
-[2026-03-14 00:56:32] Подключаюсь к браузеру через CDP...
-[2026-03-14 00:56:32] [ФАКТ] Открытых вкладок в браузере: 3
-[2026-03-14 00:56:32] [ФАКТ]   вкладка[0]: chrome://new-tab-page/
-[2026-03-14 00:56:32] [ФАКТ]   вкладка[1]: chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
-[2026-03-14 00:56:32] [ФАКТ]   вкладка[2]: chrome://omnibox-popup.top-chrome/
-[2026-03-14 00:56:32] [ФАКТ] Работаем с вкладкой: chrome://new-tab-page/
-[2026-03-14 00:56:32] Перехожу на YouTube Studio (только Private видео)...
-[2026-03-14 00:56:35] [ФАКТ] URL после перехода на Studio: https://studio.youtube.com/channel/UC9JODm8Vze3gdkL9x27eFwA/videos/upload?filter=%5B%7B%22name%22%3A%22VISIBILITY%22%2C%22value%22%3A%5B%22PRIVATE%22%5D%7D%5D&sort=%7B%22columnType%22%3A%22date%22%2C%22sortOrder%22%3A%22DESCENDING%22%7D
-[2026-03-14 00:56:37] Проверяю Private видео...
-[2026-03-14 00:56:37] [ФАКТ] Уникальных видео после дедупликации: 1
-[2026-03-14 00:56:37] [ФАКТ]   id=st2oOLiWl8s title='(субтитры) 29 Робот парсер'
-[2026-03-14 00:56:37] Найдено Private видео: 1
-[2026-03-14 00:56:37] Новых (не обработанных): 1
-[2026-03-14 00:56:37] Обрабатываю: (субтитры) 29 Робот парсер (id=st2oOLiWl8s)
-[2026-03-14 00:56:37] [ФАКТ] До перехода, текущий URL: https://studio.youtube.com/channel/UC9JODm8Vze3gdkL9x27eFwA/videos/upload?filter=%5B%7B%22name%22%3A%22VISIBILITY%22%2C%22value%22%3A%5B%22PRIVATE%22%5D%7D%5D&sort=%7B%22columnType%22%3A%22date%22%2C%22sortOrder%22%3A%22DESCENDING%22%7D
-[2026-03-14 00:56:39] [ФАКТ] После goto /edit, URL: https://studio.youtube.com/video/st2oOLiWl8s/edit
-[2026-03-14 00:56:41] [ФАКТ] Перехожу на /translations: https://studio.youtube.com/video/st2oOLiWl8s/translations
-[2026-03-14 00:56:43] [ФАКТ] После goto /translations, URL: https://studio.youtube.com/video/st2oOLiWl8s/translations
-[2026-03-14 00:56:45] [ФАКТ] h2#default-language-title найдено: 1
-[2026-03-14 00:56:45] [ФАКТ] Текст заголовка языка: 'Video language: Russian'
-[2026-03-14 00:56:45] Язык уже Russian для '(субтитры) 29 Робот парсер' — пропускаю
-[2026-03-14 00:56:46] [ФАКТ] Вернулись на список, URL: https://studio.youtube.com/channel/UC9JODm8Vze3gdkL9x27eFwA/videos/upload?filter=%5B%7B%22name%22%3A%22VISIBILITY%22%2C%22value%22%3A%5B%22PRIVATE%22%5D%7D%5D&sort=%7B%22columnType%22%3A%22date%22%2C%22sortOrder%22%3A%22DESCENDING%22%7D
-[2026-03-14 00:56:46] УСПЕХ: '(субтитры) 29 Робот парсер' (id=st2oOLiWl8s) → язык Russian установлен
-[2026-03-14 00:56:46] Обработано в этой сессии: 1
-[2026-03-14 00:56:46] Следующая проверка через 5 мин. Ctrl+C для остановки.
+[2026-03-14 01:11:07] Запуск YouTube Studio Auto Language Setter
+[2026-03-14 01:11:07] Интервал проверки: 5 минут
+[2026-03-14 01:11:07] Запускаю браузер (через subprocess, чтобы обойти блокировку Google)...
+[2026-03-14 01:11:07] Ждем запуска Chrome и открытия порта 9222...
+[2026-03-14 01:11:07] Подключаюсь к браузеру через CDP...
+[2026-03-14 01:11:08] [ФАКТ] Открытых вкладок в браузере: 3
+[2026-03-14 01:11:08] [ФАКТ]   вкладка[0]: chrome://new-tab-page/
+[2026-03-14 01:11:08] [ФАКТ]   вкладка[1]: chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html
+[2026-03-14 01:11:08] [ФАКТ]   вкладка[2]: chrome://omnibox-popup.top-chrome/
+[2026-03-14 01:11:08] [ФАКТ] Нет http-вкладок — создаю новую
+[2026-03-14 01:11:08] [ФАКТ] Работаем с вкладкой: about:blank
+[2026-03-14 01:11:08] Перехожу на YouTube Studio (только Private видео)...
+[2026-03-14 01:11:09] [DOM] Studio загружена. Ссылок на видео в DOM: 4 (URL: https://studio.youtube.com/channel/UC9JODm8Vze3gdkL9x27eFwA/videos/upload?filter=%5B%7B%22name%22%3A%22VISIBILITY%22%2C%22value%22%3A%5B%22PRIVATE%22%5D%7D%5D&sort=%7B%22columnType%22%3A%22date%22%2C%22sortOrder%22%3A%22DESCENDING%22%7D)
+[2026-03-14 01:11:11] Проверяю Private видео...
+[2026-03-14 01:11:11] [ФАКТ] Уникальных видео после дедупликации: 2
+[2026-03-14 01:11:11] [ФАКТ]   id=7SYRniOz6fI title='2026 03 13 22 39 38'
+[2026-03-14 01:11:11] [ФАКТ]   id=st2oOLiWl8s title='(субтитры) 29 Робот парсер'
+[2026-03-14 01:11:11] Найдено Private видео: 2
+[2026-03-14 01:11:11] Новых (не обработанных): 2
+[2026-03-14 01:11:11] Обрабатываю: 2026 03 13 22 39 38 (id=7SYRniOz6fI)
+[2026-03-14 01:11:11] Перехожу на /translations для '2026 03 13 22 39 38'
+[2026-03-14 01:11:12] [DOM] Заголовок языка: 'Video language: Russian' (страница: https://studio.youtube.com/video/7SYRniOz6fI/translations)
+[2026-03-14 01:11:12] Язык уже Russian для '2026 03 13 22 39 38' — пропускаю
+[2026-03-14 01:11:13] [DOM] Вернулись на список. Ссылок на видео найдено: 4 (URL: https://studio.youtube.com/channel/UC9JODm8Vze3gdkL9x27eFwA/videos/upload?filter=%5B%7B%22name%22%3A%22VISIBILITY%22%2C%22value%22%3A%5B%22PRIVATE%22%5D%7D%5D&sort=%7B%22columnType%22%3A%22date%22%2C%22sortOrder%22%3A%22DESCENDING%22%7D)
+[2026-03-14 01:11:13] УСПЕХ: '2026 03 13 22 39 38' (id=7SYRniOz6fI) → язык Russian установлен
+[2026-03-14 01:11:13] Обрабатываю: (субтитры) 29 Робот парсер (id=st2oOLiWl8s)
+[2026-03-14 01:11:13] Перехожу на /translations для '(субтитры) 29 Робот парсер'
+[2026-03-14 01:11:14] [DOM] Заголовок языка: 'Video language: Russian' (страница: https://studio.youtube.com/video/st2oOLiWl8s/translations)
+[2026-03-14 01:11:14] Язык уже Russian для '(субтитры) 29 Робот парсер' — пропускаю
+[2026-03-14 01:11:15] [DOM] Вернулись на список. Ссылок на видео найдено: 4 (URL: https://studio.youtube.com/channel/UC9JODm8Vze3gdkL9x27eFwA/videos/upload?filter=%5B%7B%22name%22%3A%22VISIBILITY%22%2C%22value%22%3A%5B%22PRIVATE%22%5D%7D%5D&sort=%7B%22columnType%22%3A%22date%22%2C%22sortOrder%22%3A%22DESCENDING%22%7D)
+[2026-03-14 01:11:15] УСПЕХ: '(субтитры) 29 Робот парсер' (id=st2oOLiWl8s) → язык Russian установлен
+[2026-03-14 01:11:15] Обработано в этой сессии: 2
+[2026-03-14 01:11:15] Следующая проверка через 5 мин. Ctrl+C для остановки.

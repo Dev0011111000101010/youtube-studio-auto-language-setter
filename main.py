@@ -17,6 +17,9 @@ LOG_FILE = "run.log"
 DOWNLOADS_DIR = r"C:\Users\VibeCodeBlogger\Downloads"
 MAX_DOWNLOAD_ATTEMPTS = 5
 
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
+
 _log_file = open(LOG_FILE, "w", encoding="utf-8", buffering=1)
 
 

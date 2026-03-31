@@ -11,7 +11,7 @@ STUDIO_FILTERED_URL = (
     "?filter=%5B%7B%22name%22%3A%22VISIBILITY%22%2C%22value%22%3A%5B%22PRIVATE%22%5D%7D%5D"
     "&sort=%7B%22columnType%22%3A%22date%22%2C%22sortOrder%22%3A%22DESCENDING%22%7D"
 )
-CHECK_INTERVAL = 300  # секунд между проверками (5 минут)
+CHECK_INTERVAL = 120  # секунд между проверками (2 минуты)
 BROWSER_PROFILE_DIR = "./browser_profile"
 LOG_FILE = "run.log"
 DOWNLOADS_DIR = r"C:\Users\VibeCodeBlogger\Downloads"
@@ -141,10 +141,10 @@ def set_language_russian(page, video_title: str, video_id: str) -> bool:
         try:
             page.wait_for_selector(
                 "span.dropdown-trigger-text, h2#default-language-title",
-                timeout=5000
+                timeout=20000
             )
         except PlaywrightTimeoutError:
-            log(f"ФАТАЛЬНО: страница /translations не загрузилась за 5 сек — закрываю браузер ({page.url})")
+            log(f"ФАТАЛЬНО: страница /translations не загрузилась за 20 сек — закрываю браузер ({page.url})")
             sys.exit(1)
 
         # Определяем состояние страницы
@@ -281,7 +281,7 @@ def set_language_russian(page, video_title: str, video_id: str) -> bool:
 
 
 def main():
-    """Основной цикл: мониторит видео и меняет язык каждые 5 минут."""
+    """Основной цикл: мониторит видео и меняет язык каждые 2 минуты."""
     processed_titles: set[str] = set()
 
     log("Запуск YouTube Studio Auto Language Setter")
@@ -419,9 +419,9 @@ def main():
 
                 page.goto(STUDIO_FILTERED_URL)
                 try:
-                    page.wait_for_selector("table[aria-label='Video list']", timeout=45000)
+                    page.wait_for_selector("a[href*='/video/'][href*='/edit']", timeout=45000)
                 except Exception:
-                    log("ПРЕДУПРЕЖДЕНИЕ: таблица видео не появилась — пропускаю итерацию")
+                    log("ПРЕДУПРЕЖДЕНИЕ: ссылки на видео не появились — пропускаю итерацию")
 
         except KeyboardInterrupt:
             log("Остановлено пользователем (Ctrl+C)")

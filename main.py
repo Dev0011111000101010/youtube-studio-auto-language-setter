@@ -417,11 +417,17 @@ def main():
                     })
                     log(f"[ФАКТ] Новая рабочая вкладка: {page.url}")
 
-                page.goto(STUDIO_FILTERED_URL)
                 try:
+                    page.goto(STUDIO_FILTERED_URL, timeout=30000)
                     page.wait_for_selector("a[href*='/video/'][href*='/edit']", timeout=45000)
-                except Exception:
-                    log("ПРЕДУПРЕЖДЕНИЕ: ссылки на видео не появились — пропускаю итерацию")
+                except PlaywrightTimeoutError:
+                    log(f"ТАЙМАУТ: страница не загрузилась (URL: {page.url}) — повтор через 5 мин")
+                    time.sleep(300)
+                    continue
+                except Exception as e:
+                    log(f"ОШИБКА при загрузке страницы: {e} — повтор через 5 мин")
+                    time.sleep(300)
+                    continue
 
         except KeyboardInterrupt:
             log("Остановлено пользователем (Ctrl+C)")

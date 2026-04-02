@@ -204,56 +204,48 @@ def set_language_russian(page, video_title: str, video_id: str) -> bool:
                     log(f"ОШИБКА: язык не сохранился — дропдаун: '{trigger_verify.strip()}'")
                     return False
 
-        log(f"Язык Russian для '{video_title}' — начинаю скачивание субтитров")
+        log(f"Язык Russian для '{video_title}' — готово")
 
-        downloaded_file = None
-        for attempt in range(1, MAX_DOWNLOAD_ATTEMPTS + 1):
-            log(f"Попытка {attempt}/{MAX_DOWNLOAD_ATTEMPTS}: скачиваю субтитры для '{video_title}'")
-
-            # Переходим на /translations (при повторных попытках — с нуля)
-            page.goto(translations_url)
-            try:
-                page.wait_for_selector("ytcp-button#m2-editor-button", timeout=5000)
-            except PlaywrightTimeoutError:
-                log(f"ОШИБКА: кнопка Edit subtitles не появилась (попытка {attempt})")
-                continue
-
-            page.locator("ytcp-button#m2-editor-button").click()
-            log(f"[DOM] Кликнул Edit subtitles — ждём 20 сек загрузки субтитров")
-            page.wait_for_timeout(20000)
-
-            # Снимок папки Downloads ДО клика
-            files_before = snapshot_transcripts()
-            log(f"[DOM] Файлов transcript в Downloads до клика: {len(files_before)}, mtime: {list(files_before.values())}")
-
-            # Ждём кнопку Options (три точки)
-            try:
-                page.wait_for_selector("#more-actions-menu > yt-icon > span > div", timeout=5000)
-            except PlaywrightTimeoutError:
-                log(f"ОШИБКА: Options не появился за 5 сек (попытка {attempt})")
-                continue
-
-            page.locator("#more-actions-menu > yt-icon > span > div").click()
-            log(f"[DOM] Кликнул Options")
-
-            # Ждём пункт Download subtitles
-            try:
-                page.wait_for_selector("yt-formatted-string.item-text:text-is('Download subtitles')", timeout=5000)
-            except PlaywrightTimeoutError:
-                log(f"ОШИБКА: пункт Download subtitles не появился (попытка {attempt})")
-                continue
-
-            page.locator("yt-formatted-string.item-text:text-is('Download subtitles')").click()
-            log(f"[DOM] Кликнул Download subtitles — жду появления файла (до 30 сек)")
-
-            # Ждём новый файл в Downloads
-            new_file = wait_for_new_transcript(files_before, timeout_sec=30)
-            if new_file:
-                log(f"[DOM] Файл субтитров скачан: {new_file}")
-                downloaded_file = new_file
-                break
-            else:
-                log(f"ПРЕДУПРЕЖДЕНИЕ: файл не появился за 30 сек (попытка {attempt})")
+        # # --- СКАЧИВАНИЕ СУБТИТРОВ (отключено) ---
+        # downloaded_file = None
+        # for attempt in range(1, MAX_DOWNLOAD_ATTEMPTS + 1):
+        #     log(f"Попытка {attempt}/{MAX_DOWNLOAD_ATTEMPTS}: скачиваю субтитры для '{video_title}'")
+        #     page.goto(translations_url)
+        #     try:
+        #         page.wait_for_selector("ytcp-button#m2-editor-button", timeout=5000)
+        #     except PlaywrightTimeoutError:
+        #         log(f"ОШИБКА: кнопка Edit subtitles не появилась (попытка {attempt})")
+        #         continue
+        #     page.locator("ytcp-button#m2-editor-button").click()
+        #     log(f"[DOM] Кликнул Edit subtitles — ждём 20 сек загрузки субтитров")
+        #     page.wait_for_timeout(20000)
+        #     files_before = snapshot_transcripts()
+        #     log(f"[DOM] Файлов transcript в Downloads до клика: {len(files_before)}, mtime: {list(files_before.values())}")
+        #     try:
+        #         page.wait_for_selector("#more-actions-menu > yt-icon > span > div", timeout=5000)
+        #     except PlaywrightTimeoutError:
+        #         log(f"ОШИБКА: Options не появился за 5 сек (попытка {attempt})")
+        #         continue
+        #     page.locator("#more-actions-menu > yt-icon > span > div").click()
+        #     log(f"[DOM] Кликнул Options")
+        #     try:
+        #         page.wait_for_selector("yt-formatted-string.item-text:text-is('Download subtitles')", timeout=5000)
+        #     except PlaywrightTimeoutError:
+        #         log(f"ОШИБКА: пункт Download subtitles не появился (попытка {attempt})")
+        #         continue
+        #     page.locator("yt-formatted-string.item-text:text-is('Download subtitles')").click()
+        #     log(f"[DOM] Кликнул Download subtitles — жду появления файла (до 30 сек)")
+        #     new_file = wait_for_new_transcript(files_before, timeout_sec=30)
+        #     if new_file:
+        #         log(f"[DOM] Файл субтитров скачан: {new_file}")
+        #         downloaded_file = new_file
+        #         break
+        #     else:
+        #         log(f"ПРЕДУПРЕЖДЕНИЕ: файл не появился за 30 сек (попытка {attempt})")
+        # if not downloaded_file:
+        #     log(f"ОШИБКА: не удалось скачать субтитры за {MAX_DOWNLOAD_ATTEMPTS} попыток")
+        #     return False
+        # # --- конец блока скачивания ---
 
         # Возвращаемся на список
         page.goto(STUDIO_FILTERED_URL)
@@ -265,10 +257,6 @@ def set_language_russian(page, video_title: str, video_id: str) -> bool:
 
         actual_count = len(page.query_selector_all("a[href*='/video/'][href*='/edit']"))
         log(f"[DOM] Вернулись на список. Ссылок на видео найдено: {actual_count} (URL: {page.url})")
-
-        if not downloaded_file:
-            log(f"ОШИБКА: не удалось скачать субтитры за {MAX_DOWNLOAD_ATTEMPTS} попыток")
-            return False
 
         return True
 

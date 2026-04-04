@@ -409,12 +409,12 @@ def main():
                     page.goto(STUDIO_FILTERED_URL, timeout=30000)
                     page.wait_for_selector("a[href*='/video/'][href*='/edit']", timeout=45000)
                 except PlaywrightTimeoutError:
-                    log(f"ТАЙМАУТ: страница не загрузилась (URL: {page.url}) — повтор через 5 мин")
-                    time.sleep(300)
+                    log(f"ТАЙМАУТ: страница не загрузилась (URL: {page.url}) — повтор через 2 мин")
+                    time.sleep(120)
                     continue
                 except Exception as e:
-                    log(f"ОШИБКА при загрузке страницы: {e} — повтор через 5 мин")
-                    time.sleep(300)
+                    log(f"ОШИБКА при загрузке страницы: {e} — повтор через 2 мин")
+                    time.sleep(120)
                     continue
 
         except KeyboardInterrupt:

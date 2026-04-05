@@ -1,4 +1,4 @@
-# debug_dump.py
+соз# debug_dump.py
 import sys
 sys.stdout.reconfigure(encoding="utf-8")
 

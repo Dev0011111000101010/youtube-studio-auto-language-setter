@@ -331,14 +331,18 @@ def main():
         for i, p_ in enumerate(all_pages):
             log(f"[ФАКТ]   вкладка[{i}]: {p_.url}")
 
-        # Берём первую нормальную вкладку (http/https), не служебную chrome:// страницу
+        # Берём первую нормальную вкладку (http/https), иначе — любую существующую
         page = next(
             (p_ for p_ in all_pages if p_.url.startswith("http")),
             None
         )
         if page is None:
-            log("[ФАКТ] Нет http-вкладок — создаю новую")
-            page = context.new_page()
+            if all_pages:
+                page = all_pages[0]
+                log(f"[ФАКТ] Нет http-вкладок — использую существующую: {page.url}")
+            else:
+                log("[ФАКТ] Вкладок нет вообще — создаю новую")
+                page = context.new_page()
 
         # Принудительно направляем загрузки в Downloads — переопределяем Playwright CDP-перехват
         cdp_session = context.new_cdp_session(page)
